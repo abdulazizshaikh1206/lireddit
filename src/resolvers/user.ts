@@ -1,13 +1,16 @@
 import argon2 from "argon2";
 import {
   Arg,
+  Ctx,
   Field,
   InputType,
   Mutation,
   ObjectType,
+  Query,
   Resolver,
 } from "type-graphql";
 import { User } from "../entities/User";
+import { MyContext } from "src/types";
 
 @InputType()
 class UsernamePasswordInput {
@@ -38,9 +41,20 @@ class UserResponse {
 
 @Resolver()
 export class UserResolver {
+  @Query(() => User)
+  async me(@Ctx() { req }: MyContext): Promise<User | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+
+    const user = await User.findOne({ where: { id: req.session.userId } });
+    return user;
+  }
+
   @Mutation(() => UserResponse)
   async register(
-    @Arg("options") options: UsernamePasswordInput
+    @Arg("options") options: UsernamePasswordInput,
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     if (options.username.length <= 2) {
       return {
@@ -80,6 +94,11 @@ export class UserResolver {
         };
       }
     }
+
+    // Store user id in session
+    // Set cookie on response (i.e Kepp them logged in)
+    req.session.userId = user.id;
+
     return {
       user,
     };
@@ -87,7 +106,8 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg("options") options: UsernamePasswordInput
+    @Arg("options") options: UsernamePasswordInput,
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     const user = await User.findOne({ where: { username: options.username } });
     if (!user) {
@@ -111,6 +131,9 @@ export class UserResolver {
         ],
       };
     }
+
+    req.session.userId = user.id;
+
     return {
       user,
     };
